@@ -15,6 +15,7 @@ import {
   tap
 } from 'rxjs';
 import { API_RTC_KEY, STREAM_PUBLISH_DELAY } from './tokens';
+import { AwsService } from './aws';
 
 function subscribeToStreamListChange(conversation: Conversation) {
   conversation.on('streamListChanged', (streamInfo: StreamInfo) => {
@@ -44,9 +45,15 @@ export class StreamService {
   onStreamAdded$: Subject<Stream> = new Subject<Stream>();
   onStreamRemoved$: Subject<Stream> = new Subject<Stream>();
 
+  localStream: Stream;
+  iAmHost = false;
+
+  participantsCount = 1;
+
   constructor(
     @Inject(API_RTC_KEY) public webRtcKey: string,
     @Inject(STREAM_PUBLISH_DELAY) public publishDelay: number,
+    private awsService: AwsService
   ) {
     this.userAgent = new UserAgent({ uri: this.webRtcKey });
   }
@@ -57,8 +64,17 @@ export class StreamService {
         map((session) => session.getConversation(name)),
         tap((conversation) => this.conversation = conversation),
         tap(subscribeToStreamListChange),
+        tap(() => {
+          console.log('con', this.conversation);
+        }),
         tap(conversation => conversation.on('streamAdded', this.onStreamAdded)),
         tap(conversation => conversation.on('streamRemoved', this.onStreamRemoved)),
+        tap(conversation => conversation.on('contactJoined', (c) => {
+          this.participantsCount++;
+        })),
+        tap(conversation => conversation.on('contactLeft', (c) => {
+          this.participantsCount--;
+        })),
         switchMap(() => this.conversation.join()),
         tap(() => this.conversationLoaded$.next(this.conversation)),
         map(() => this.conversation)
@@ -77,17 +93,24 @@ export class StreamService {
     this.onStreamRemoved$.next(stream);
   };
 
-  createMediaStreamFromVideo(video: HTMLVideoElement): Observable<Stream> {
+  createMediaStreamFromVideo(video: HTMLVideoElement): Observable<any> {
+
+    if (true) {
+      return from(this.awsService.shareVideoFile(video))
+        .pipe(
+          tap(() => this.iAmHost = true),
+        )
+    }
+
     let mediaStream = (video as any).captureStream();
 
-    return (this.conversationLoaded$
+    return (from(this.userAgent.createStreamFromMediaStream(mediaStream))
       .pipe(
-        filter(c => !!c),
-        take(1),
         takeUntil(this.onStreamAdded$),
         delay(this.publishDelay),
-        switchMap(() => this.userAgent.createStreamFromMediaStream(mediaStream)),
         switchMap((stream) => this.conversation.publish(stream)),
+        tap((stream) => this.localStream = stream),
+        tap(() => this.iAmHost = true),
         catchError(err => {
           console.error('Create stream error', err);
           return err
@@ -95,7 +118,9 @@ export class StreamService {
       ) as Observable<Stream>);
   }
 
-  cancelStream(stream: Stream) {
-    this.conversation.unpublish(stream);
+  cancelStream() {
+    this.conversation.unpublish(this.localStream);
+    this.localStream = null;
+    this.iAmHost = false;
   }
 }

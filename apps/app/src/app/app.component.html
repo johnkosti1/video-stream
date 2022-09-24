@@ -1,17 +1,23 @@
 <div class="content">
 
-  <div id="player" *ngIf="streamService.conversation && !streamService.hasRemoteStream">
-    <video
-      [ngStyle]="{ opacity: streamService.conversation ? 1 : 0 }"
-      #player
-      (loadeddata)="onVideoLoadedData($event)"
-      src="assets/sample.mp4"
-      width="320" height="240"
-      autoplay loop controls
-      [muted]="true"
-    >
-    </video>
-  </div>
+  <ng-container *ngIf="streamService.conversation && !streamService.hasRemoteStream">
+    <select [formControl]="selectedSample">
+      <option value="sample.mp4">sample 1</option>
+      <option value="sample_2.webm">sample 2</option>
+    </select>
+
+    <div id="player">
+      <video
+        id="content-share-video"
+        #player
+        (loadeddata)="onVideoLoadedData($event)"
+        [src]="'assets/' + selectedSample.value"
+        autoplay loop controls
+        [muted]="true"
+      >
+      </video>
+    </div>
+  </ng-container>
 
   <ng-container *ngIf="!streamService.conversation; else withConversation">
     <button class="btn join" (click)="join()">{{conversationLoading ? 'Loading...' : 'Join stream'}}</button>
@@ -21,12 +27,11 @@
     <div>
       <div id="remote-container">
       </div>
-      <div id="local-container">
-      </div>
+      <div id="video-aws"></div>
     </div>
 
-    <ng-container *ngIf="(localStream$ | async) as stream; else withoutStream">
-      <button class="btn cancel" (click)="cancelStream(stream)">Cancel stream</button>
+    <ng-container *ngIf="streamService.iAmHost; else withoutStream">
+      <button class="btn cancel" (click)="cancelStream()">Cancel stream</button>
     </ng-container>
 
     <ng-template #withoutStream>
@@ -37,3 +42,5 @@
   </ng-template>
 
 </div>
+
+<!--<video id="video-tile-video"></video>-->
