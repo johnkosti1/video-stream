@@ -1,1 +1,39 @@
-<video-share-nx-welcome></video-share-nx-welcome>
+<div class="content">
+
+  <div id="player" *ngIf="streamService.conversation && !streamService.hasRemoteStream">
+    <video
+      [ngStyle]="{ opacity: streamService.conversation ? 1 : 0 }"
+      #player
+      (loadeddata)="onVideoLoadedData($event)"
+      src="assets/sample.mp4"
+      width="320" height="240"
+      autoplay loop controls
+      [muted]="true"
+    >
+    </video>
+  </div>
+
+  <ng-container *ngIf="!streamService.conversation; else withConversation">
+    <button class="btn join" (click)="join()">{{conversationLoading ? 'Loading...' : 'Join stream'}}</button>
+  </ng-container>
+
+  <ng-template #withConversation>
+    <div>
+      <div id="remote-container">
+      </div>
+      <div id="local-container">
+      </div>
+    </div>
+
+    <ng-container *ngIf="(localStream$ | async) as stream; else withoutStream">
+      <button class="btn cancel" (click)="cancelStream(stream)">Cancel stream</button>
+    </ng-container>
+
+    <ng-template #withoutStream>
+      <ng-container *ngIf="!streamService.hasRemoteStream">
+        <button class="btn publish" (click)="startStreamVideo()">{{videoStreamStartLoading ? 'Loading...' : 'Publish your video'}}</button>
+      </ng-container>
+    </ng-template>
+  </ng-template>
+
+</div>

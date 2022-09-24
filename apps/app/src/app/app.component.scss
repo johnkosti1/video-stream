@@ -1,0 +1,41 @@
+
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #c4e2fd;
+
+  .content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .btn {
+    padding: 1rem 1.2rem;
+    font-size: 1rem;
+    font-weight: bold;
+
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+    border: none;
+
+    &.join {
+      background: #670a8d;
+    }
+
+    &.publish {
+      background: #1417be;
+    }
+
+    &.cancel {
+      background: #e10f43;
+    }
+  }
+
+  video {
+    border-radius: 5px;
+  }
+}
