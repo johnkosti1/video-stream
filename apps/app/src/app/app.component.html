@@ -1,6 +1,6 @@
 <div class="content">
 
-  <ng-container *ngIf="streamService.conversation && !streamService.hasRemoteStream">
+  <ng-container *ngIf="streamService.conversation && !hasRemoteStream">
     <select [formControl]="selectedSample">
       <option value="sample.mp4">sample 1</option>
       <option value="sample_2.webm">sample 2</option>
@@ -27,15 +27,15 @@
     <div>
       <div id="remote-container">
       </div>
-      <div id="video-aws"></div>
+      <video [ngStyle]="{ display: hasRemoteStream ? 'block' : 'none'}" id="video-aws"></video>
     </div>
 
-    <ng-container *ngIf="streamService.iAmHost; else withoutStream">
+    <ng-container *ngIf="iAmHost; else withoutStream">
       <button class="btn cancel" (click)="cancelStream()">Cancel stream</button>
     </ng-container>
 
     <ng-template #withoutStream>
-      <ng-container *ngIf="!streamService.hasRemoteStream">
+      <ng-container *ngIf="!hasRemoteStream">
         <button class="btn publish" (click)="startStreamVideo()">{{videoStreamStartLoading ? 'Loading...' : 'Publish your video'}}</button>
       </ng-container>
     </ng-template>

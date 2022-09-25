@@ -13,6 +13,8 @@ import { FormControl } from '@angular/forms';
 export class AppComponent {
   videoStreamStartLoading = false;
   conversationLoading = false;
+  iAmHost = false;
+  hasRemoteStream = false;
 
   videoDataLoaded$ = new BehaviorSubject<boolean>(false);
 
@@ -25,6 +27,18 @@ export class AppComponent {
   }
 
   ngOnInit() {
+    this.awsService.remoteStreamAdded$
+      .pipe(
+        filter(() => !this.iAmHost),
+        tap((hasRemoteStream) => this.hasRemoteStream = hasRemoteStream)
+      )
+      .subscribe()
+
+    this.streamService.onStreamAdded$
+      .pipe(
+        tap((hasRemoteStream) => this.hasRemoteStream = hasRemoteStream)
+      )
+      .subscribe()
   }
 
   join() {
@@ -52,6 +66,7 @@ export class AppComponent {
         take(1),
         // tap(() => this.awsService.shareVideoFile()),
         switchMap(() => this.streamService.createMediaStreamFromVideo(this.videoPlayer.nativeElement)),
+        tap(() => this.iAmHost = true),
         finalize(() => this.videoStreamStartLoading = false),
         finalize(() => this.selectedSample.disable()),
       )
@@ -61,5 +76,7 @@ export class AppComponent {
   cancelStream() {
     this.streamService.cancelStream();
     this.selectedSample.enable();
+    this.iAmHost = false;
+    this.hasRemoteStream = false;
   }
 }

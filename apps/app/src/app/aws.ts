@@ -12,6 +12,7 @@ import {
   POSTLogger, VideoTileState
 } from 'amazon-chime-sdk-js';
 import { Injectable } from '@angular/core';
+import { BehaviorSubject, Subject } from 'rxjs';
 
 export let fatal: (e: Error) => void;
 
@@ -37,39 +38,18 @@ export class AwsService {
   region: string | null = null;
   primaryExternalMeetingId: string | undefined = undefined;
 
-  async shareVideoFile(video: HTMLVideoElement) {
-    const mediaStream = await this.playToStream(video);
+  remoteStreamAdded$ = new Subject<boolean>();
 
-    console.log('should share', mediaStream)
+  iAmHost = false;
+
+  async shareVideoFile(mediaStream: MediaStream) {
     await this.audioVideo.startContentShare(mediaStream);
-    await this.audioVideo.start();
-
-    this.audioVideo.addObserver({
-      videoTileDidUpdate: (tileState: VideoTileState) => {
-        console.log('tile did update !!', tileState)
-        if (!tileState.boundAttendeeId || tileState.localTile || !!tileState.boundVideoElement) {
-          return;
-        }
-
-        console.log('PASSED')
-
-        const videoFile = document.getElementById('video-aws') as HTMLVideoElement;
-        this.audioVideo.bindVideoElement(tileState.tileId, videoFile);
-      }
-    });
+    this.iAmHost = true;
   }
 
-  async playToStream(videoFile: HTMLVideoElement): Promise<MediaStream> {
-    console.log('video filee!!!!')
-    await videoFile.play();
-
-    if (this.defaultBrowserBehavior.hasFirefoxWebRTC()) {
-      // @ts-ignore
-      return videoFile.mozCaptureStream();
-    }
-
-    // @ts-ignore
-    return videoFile.captureStream();
+  cancelStream() {
+    this.audioVideo.stopContentShare();
+    this.iAmHost = false;
   }
 
   async authenticate(user: string = 'john'): Promise<string> {
@@ -96,6 +76,30 @@ export class AwsService {
     );
 
     this.audioVideo = this.meetingSession.audioVideo;
+    this.audioVideo.start();
+
+    this.audioVideo.addObserver({
+      videoTileWasRemoved: (tileId: number) => {
+        this.remoteStreamAdded$.next(false);
+      },
+      videoTileDidUpdate: (tileState: VideoTileState) => {
+        console.log('updaye !!!!!')
+        if (!tileState.boundAttendeeId || tileState.localTile || !!tileState.boundVideoElement) {
+          return;
+        }
+
+        if (this.iAmHost) {
+          return;
+        }
+
+        this.remoteStreamAdded$.next(true);
+
+        setTimeout(() => {
+          const videoFile = document.getElementById('video-aws') as HTMLVideoElement;
+          this.audioVideo.bindVideoElement(tileState.tileId, videoFile);
+        }, 1000)
+      }
+    });
   }
 
   async sendJoinRequest(

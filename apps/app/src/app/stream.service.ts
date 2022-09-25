@@ -39,14 +39,11 @@ function subscribeToStreamListChange(conversation: Conversation) {
 export class StreamService {
   userAgent: UserAgent;
   conversation: Conversation = null;
-  hasRemoteStream = false;
 
   conversationLoaded$: BehaviorSubject<Conversation> = new BehaviorSubject<Conversation | null>(null);
-  onStreamAdded$: Subject<Stream> = new Subject<Stream>();
-  onStreamRemoved$: Subject<Stream> = new Subject<Stream>();
+  onStreamAdded$: Subject<boolean> = new Subject<boolean>();
 
   localStream: Stream;
-  iAmHost = false;
 
   participantsCount = 1;
 
@@ -83,26 +80,21 @@ export class StreamService {
 
   onStreamAdded = (stream: Stream) => {
     stream.addInDiv('remote-container', 'remote-media-' + stream.streamId, {}, false);
-    this.hasRemoteStream = true;
-    this.onStreamAdded$.next(stream);
+    this.onStreamAdded$.next(true);
   };
 
   onStreamRemoved = (stream: Stream) => {
     stream.removeFromDiv('remote-container', 'remote-media-' + stream.streamId);
-    this.hasRemoteStream = false;
-    this.onStreamRemoved$.next(stream);
+    this.onStreamAdded$.next(false);
   };
 
   createMediaStreamFromVideo(video: HTMLVideoElement): Observable<any> {
-
+    const mediaStream = (video as any).captureStream();
     if (true) {
-      return from(this.awsService.shareVideoFile(video))
+      return from(this.awsService.shareVideoFile(mediaStream))
         .pipe(
-          tap(() => this.iAmHost = true),
         )
     }
-
-    let mediaStream = (video as any).captureStream();
 
     return (from(this.userAgent.createStreamFromMediaStream(mediaStream))
       .pipe(
@@ -110,7 +102,6 @@ export class StreamService {
         delay(this.publishDelay),
         switchMap((stream) => this.conversation.publish(stream)),
         tap((stream) => this.localStream = stream),
-        tap(() => this.iAmHost = true),
         catchError(err => {
           console.error('Create stream error', err);
           return err
@@ -119,8 +110,11 @@ export class StreamService {
   }
 
   cancelStream() {
-    this.conversation.unpublish(this.localStream);
-    this.localStream = null;
-    this.iAmHost = false;
+    if (true) {
+      this.awsService.cancelStream();
+    } else {
+      this.conversation.unpublish(this.localStream);
+      this.localStream = null;
+    }
   }
 }
