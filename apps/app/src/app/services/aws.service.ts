@@ -4,15 +4,15 @@ import {
   DefaultBrowserBehavior,
   DefaultDeviceController,
   DefaultMeetingSession,
-  EventReporter,
   Logger,
   LogLevel,
   MeetingSession,
   MeetingSessionConfiguration,
-  POSTLogger, VideoTileState
+  VideoTileState
 } from 'amazon-chime-sdk-js';
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { catchError, from, map, Observable, of, Subject, tap } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 
 export let fatal: (e: Error) => void;
 
@@ -20,13 +20,6 @@ export let fatal: (e: Error) => void;
   providedIn: 'root'
 })
 export class AwsService {
-  static readonly BASE_URL: string = [
-    location.protocol,
-    '//',
-    location.host,
-    location.pathname.replace(/\/*$/, '/').replace('/v2', ''),
-  ].join('');
-
   defaultBrowserBehavior: DefaultBrowserBehavior = new DefaultBrowserBehavior();
   audioVideo: AudioVideoFacade | null = null;
   meetingSession: MeetingSession | null = null;
@@ -34,17 +27,25 @@ export class AwsService {
   logLevel = LogLevel.WARN;
   deviceController: DefaultDeviceController | undefined = undefined;
   enableWebAudio = false;
-  joinInfo: any | undefined;
-  region: string | null = null;
-  primaryExternalMeetingId: string | undefined = undefined;
 
   remoteStreamAdded$ = new Subject<boolean>();
 
   iAmHost = false;
 
+  meetingTitle = 'test';
+
+  constructor(private httpClient: HttpClient) {
+  }
+
   async shareVideoFile(mediaStream: MediaStream) {
-    await this.audioVideo.startContentShare(mediaStream);
     this.iAmHost = true;
+    return from(this.audioVideo.startContentShare(mediaStream))
+      .pipe(
+        catchError(() => {
+          this.iAmHost = false;
+          return of(null);
+        })
+      );
   }
 
   cancelStream() {
@@ -52,19 +53,18 @@ export class AwsService {
     this.iAmHost = false;
   }
 
-  async authenticate(user: string = 'john'): Promise<string> {
-    this.joinInfo = (await this.sendJoinRequest('test', user, '')).JoinInfo;
-    this.region = this.joinInfo.Meeting.Meeting.MediaRegion;
-    const configuration = new MeetingSessionConfiguration(this.joinInfo.Meeting, this.joinInfo.Attendee);
-    await this.initializeMeetingSession(configuration);
-    this.primaryExternalMeetingId = this.joinInfo.PrimaryExternalMeetingId;
-
-    return configuration.meetingId;
+  authenticate(user: string = 'john'): Observable<any> {
+    return this.sendJoinRequest(user)
+      .pipe(
+        map(({ JoinInfo }) => JoinInfo),
+        map((joinInfo) => new MeetingSessionConfiguration(joinInfo.Meeting, joinInfo.Attendee)),
+        tap((configuration) => this.initializeMeetingSession(configuration))
+      );
   }
 
-  async initializeMeetingSession(configuration: MeetingSessionConfiguration): Promise<void> {
-    this.meetingLogger = new ConsoleLogger('SDK', this.logLevel);
 
+  initializeMeetingSession(configuration: MeetingSessionConfiguration) {
+    this.meetingLogger = new ConsoleLogger('SDK', this.logLevel);
     this.deviceController = new DefaultDeviceController(this.meetingLogger, {
       enableWebAudio: this.enableWebAudio,
     });
@@ -83,7 +83,6 @@ export class AwsService {
         this.remoteStreamAdded$.next(false);
       },
       videoTileDidUpdate: (tileState: VideoTileState) => {
-        console.log('updaye !!!!!')
         if (!tileState.boundAttendeeId || tileState.localTile || !!tileState.boundVideoElement) {
           return;
         }
@@ -97,32 +96,25 @@ export class AwsService {
         setTimeout(() => {
           const videoFile = document.getElementById('video-aws') as HTMLVideoElement;
           this.audioVideo.bindVideoElement(tileState.tileId, videoFile);
-        }, 1000)
+        }, 300);
       }
     });
   }
 
-  async sendJoinRequest(
-    meeting: string,
-    name: string,
-    region: string,
-    primaryExternalMeetingId?: string): Promise<any> {
-    let uri = `http://127.0.0.1:5000/join?title=${encodeURIComponent(
-      meeting
-    )}&name=${encodeURIComponent(name)}&region=${encodeURIComponent('us-east-1')}`;
-    if (primaryExternalMeetingId) {
-      uri += `&primaryExternalMeetingId=${primaryExternalMeetingId}`;
-    }
-    uri += ``;
-    const response = await fetch(uri,
-      {
-        method: 'POST',
+  sendJoinRequest(name: string): Observable<any> {
+    return this.httpClient.post('http://localhost:5000/join', {}, {
+      params: {
+        title: this.meetingTitle,
+        name,
+        region: 'us-east-1',
       }
+    });
+  }
+
+  leaveMeeting(): Observable<any> {
+    return this.httpClient.post('http://localhost:5000/end',
+      {},
+      { params: { title: this.meetingTitle } }
     );
-    const json = await response.json();
-    if (json.error) {
-      throw new Error(`Server error: ${json.error}`);
-    }
-    return json;
   }
 }

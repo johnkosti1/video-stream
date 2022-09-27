@@ -6,6 +6,7 @@ export const environment = {
   production: false,
   apiRtcKey: 'myDemoApiKey',
   streamPublishDelay: 50,
+  streamSwitchThreshold: 3,
 };
 
 /*

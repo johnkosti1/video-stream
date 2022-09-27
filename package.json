@@ -8,7 +8,7 @@
     "start": "nx serve",
     "build": "nx build",
     "test": "nx test",
-    "aws:serve": "export AWS_ACCESS_KEY_ID=AKIAYYWEUJ5R2L6S3YVT && export AWS_SECRET_ACCESS_KEY=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 && node serve"
+    "aws:serve": "node server"
   },
   "private": true,
   "dependencies": {

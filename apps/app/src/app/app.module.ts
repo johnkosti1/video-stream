@@ -6,8 +6,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 
 import { AppComponent } from './app.component';
-import { STREAM_PUBLISH_DELAY, API_RTC_KEY } from './tokens';
+import { STREAM_PUBLISH_DELAY, API_RTC_KEY, STREAM_SWITCH_THRESHOLD } from './tokens';
 import { environment } from '../environments/environment';
+import { HttpClientModule } from '@angular/common/http';
 
 @NgModule({
   declarations: [
@@ -16,7 +17,8 @@ import { environment } from '../environments/environment';
   imports: [
     BrowserModule,
     FormsModule, ReactiveFormsModule,
-    BrowserAnimationsModule, MatFormFieldModule, MatInputModule
+    BrowserAnimationsModule, MatFormFieldModule, MatInputModule,
+    HttpClientModule
   ],
   providers: [
     {
@@ -26,6 +28,10 @@ import { environment } from '../environments/environment';
     {
       provide: STREAM_PUBLISH_DELAY,
       useValue: environment.streamPublishDelay
+    },
+    {
+      provide: STREAM_SWITCH_THRESHOLD,
+      useValue: environment.streamSwitchThreshold
     },
   ],
   bootstrap: [AppComponent]

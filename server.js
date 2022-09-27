@@ -69,21 +69,24 @@ function getClientForMeeting(meeting) {
 function serve(host = '127.0.0.1:5000') {
   // Start an HTTP server to serve the index page and handle meeting actions
   http.createServer({}, async (request, response) => {
+
+    response.setHeader('Access-Control-Allow-Origin', '*');
+    response.setHeader('Access-Control-Request-Method', '*');
+    response.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET');
+    response.setHeader('Access-Control-Allow-Headers', '*');
+
+    if ( request.method === 'OPTIONS' ) {
+      response.writeHead(200);
+      response.end();
+      return;
+    }
+
     log(`${request.method} ${request.url} BEGIN`);
     try {
       // Enable HTTP compression
       compression({})(request, response, () => {});
       const requestUrl = url.parse(request.url, true);
-      if (request.method === 'GET' && requestUrl.pathname === '/') {
-        // Return the contents of the index page
-        // respond(response, 200, 'text/html', indexPage);
-        respond(response, 200, 'application/json', "{ 'hello': 'world'}");
-      } else if (process.env.DEBUG) {
-        // For internal debugging - ignore this
-        const debug = require('./debug.js');
-        const debugResponse = debug.debug(request);
-        respond(response, debugResponse.status, 'application/json', JSON.stringify(debugResponse.response, null, 2));
-      } else if (request.method === 'POST' && requestUrl.pathname === '/join') {
+      if (request.method === 'POST' && requestUrl.pathname === '/join') {
         if (!requestUrl.query.title || !requestUrl.query.name) {
           respond(response, 400, 'application/json', JSON.stringify({ error: 'Need parameters: title and name' }));
         }
@@ -216,174 +219,12 @@ function serve(host = '127.0.0.1:5000') {
           console.warn("Cloud media capture not available")
           respond(response, 500, 'application/json', JSON.stringify({}))
         }
-      } else if (request.method === 'POST' && requestUrl.pathname === '/startLiveConnector') {
-        if (ivsEndpoint) {
-          try {
-            const callerInfo = await sts.getCallerIdentity().promise()
-            liveConnectorPipelineInfo = await chimeSDKMediaPipelinesRegional.createMediaLiveConnectorPipeline({
-              Sinks: [
-                {
-                  RTMPConfiguration: {
-                    AudioChannels: "Stereo",
-                    AudioSampleRate: "48000",
-                    Url: ivsEndpoint
-                  },
-                  SinkType: "RTMP"
-                }
-              ],
-              Sources: [
-                {
-                  ChimeSdkMeetingLiveConnectorConfiguration: {
-                    Arn: `arn:aws:chime::${callerInfo.Account}:meeting:${meetingTable[requestUrl.query.title].Meeting.MeetingId}`,
-                    CompositedVideo: {
-                      GridViewConfiguration: {
-                        ContentShareLayout: "Vertical",
-                      },
-                      Layout: "GridView",
-                      Resolution: "FHD",
-                    },
-                    MuxType: "AudioWithCompositedVideo"
-                  },
-                  SourceType: "ChimeSdkMeeting"
-                }
-              ]
-            }).promise();
-            meetingTable[requestUrl.query.title].LiveConnector = liveConnectorPipelineInfo.MediaLiveConnectorPipeline;
-            respond(response, 201, 'application/json', JSON.stringify(liveConnectorPipelineInfo));
-          }
-          catch (err) {
-            respond(response, 500, 'application/json', JSON.stringify({ error: err.message }, null, 2));
-          }
-        } else {
-          console.warn("Live Connector not available")
-          respond(response, 500, 'application/json', JSON.stringify({}))
-        }
-      } else if (request.method === 'POST' && requestUrl.pathname === '/endLiveConnector') {
-        if (ivsEndpoint) {
-          liveConnectorPipelineId = meetingTable[requestUrl.query.title].LiveConnector.MediaPipelineId;
-          liveConnectorPipelineInfo = await chimeSDKMediaPipelinesRegional.deleteMediaPipeline({
-            MediaPipelineId: liveConnectorPipelineId
-          }).promise();
-          meetingTable[requestUrl.query.title].LiveConnector = undefined;
-          respond(response, 200, 'application/json', JSON.stringify(liveConnectorPipelineInfo));
-        } else {
-          console.warn("Live Connector not available")
-          respond(response, 500, 'application/json', JSON.stringify({}))
-        }
-      }
-      else if (request.method === 'POST' && requestUrl.pathname === '/deleteAttendee') {
-        if (!requestUrl.query.title || !requestUrl.query.attendeeId) {
-          throw new Error('Need parameters: title, attendeeId');
-        }
-        let client = getClientForMeeting(meetingTable[requestUrl.query.title]);
-
-        // Fetch the meeting info
-        const meeting = meetingTable[requestUrl.query.title];
-
-        await client.deleteAttendee({
-          MeetingId: meeting.Meeting.MeetingId,
-          AttendeeId: requestUrl.query.attendeeId,
-        }).promise();
-
-        respond(response, 201, 'application/json', JSON.stringify({}));
-      } else if (request.method === 'POST' && requestUrl.pathname === '/endCapture') {
-        if (captureS3Destination) {
-          pipelineInfo = meetingTable[requestUrl.query.title].Capture;
-          await chime.deleteMediaCapturePipeline({
-            MediaPipelineId: pipelineInfo.MediaPipelineId
-          }).promise();
-          meetingTable[requestUrl.query.title].Capture = undefined;
-          respond(response, 200, 'application/json', JSON.stringify({}));
-        } else {
-          console.warn("Cloud media capture not available")
-          respond(response, 500, 'application/json', JSON.stringify({}))
-        }
       } else if (request.method === 'POST' && requestUrl.pathname === '/end') {
         // End the meeting. All attendee connections will hang up.
         let client = getClientForMeeting(meetingTable[requestUrl.query.title]);
 
         await client.deleteMeeting({
           MeetingId: meetingTable[requestUrl.query.title].Meeting.MeetingId,
-        }).promise();
-        respond(response, 200, 'application/json', JSON.stringify({}));
-      } else if (request.method === 'POST' && requestUrl.pathname === '/start_transcription') {
-        const languageCode = requestUrl.query.language;
-        const region = requestUrl.query.region;
-        let transcriptionConfiguration = {};
-        let transcriptionStreamParams = {};
-        if (requestUrl.query.transcriptionStreamParams) {
-          transcriptionStreamParams = JSON.parse(requestUrl.query.transcriptionStreamParams);
-        }
-        const contentIdentification = requestUrl.query.contentIdentification;
-        const piiEntityTypes = requestUrl.query.piiEntityTypes;
-        if (requestUrl.query.engine === 'transcribe') {
-          transcriptionConfiguration = {
-            EngineTranscribeSettings: {}
-          };
-          if (languageCode) {
-            transcriptionConfiguration.EngineTranscribeSettings.LanguageCode = languageCode;
-          }
-          if (region) {
-            transcriptionConfiguration.EngineTranscribeSettings.Region = region;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('contentIdentificationType')) {
-            transcriptionConfiguration.EngineTranscribeSettings.ContentIdentificationType = transcriptionStreamParams.contentIdentificationType;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('contentRedactionType')) {
-            transcriptionConfiguration.EngineTranscribeSettings.ContentRedactionType = transcriptionStreamParams.contentRedactionType;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('enablePartialResultsStability')) {
-            transcriptionConfiguration.EngineTranscribeSettings.EnablePartialResultsStabilization = transcriptionStreamParams.enablePartialResultsStability;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('partialResultsStability')) {
-            transcriptionConfiguration.EngineTranscribeSettings.PartialResultsStability = transcriptionStreamParams.partialResultsStability;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('piiEntityTypes')) {
-            transcriptionConfiguration.EngineTranscribeSettings.PiiEntityTypes = transcriptionStreamParams.piiEntityTypes;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('languageModelName')) {
-            transcriptionConfiguration.EngineTranscribeSettings.LanguageModelName = transcriptionStreamParams.languageModelName;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('identifyLanguage')) {
-            transcriptionConfiguration.EngineTranscribeSettings.IdentifyLanguage = transcriptionStreamParams.identifyLanguage;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('languageOptions')) {
-            transcriptionConfiguration.EngineTranscribeSettings.LanguageOptions = transcriptionStreamParams.languageOptions;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('preferredLanguage')) {
-            transcriptionConfiguration.EngineTranscribeSettings.PreferredLanguage = transcriptionStreamParams.preferredLanguage;
-          }
-        } else if (requestUrl.query.engine === 'transcribe_medical') {
-          transcriptionConfiguration = {
-            EngineTranscribeMedicalSettings: {
-              LanguageCode: languageCode,
-              Specialty: 'PRIMARYCARE',
-              Type: 'CONVERSATION',
-            }
-          };
-          if (region) {
-            transcriptionConfiguration.EngineTranscribeMedicalSettings.Region = region;
-          }
-          if (transcriptionStreamParams.hasOwnProperty('contentIdentificationType')) {
-            transcriptionConfiguration.EngineTranscribeMedicalSettings.ContentIdentificationType = transcriptionStreamParams.contentIdentificationType;
-          }
-        } else {
-          return response(400, 'application/json', JSON.stringify({
-            error: 'Unknown transcription engine'
-          }));
-        }
-        let client = getClientForMeeting(meetingTable[requestUrl.query.title]);
-
-        await client.startMeetingTranscription({
-          MeetingId: meetingTable[requestUrl.query.title].Meeting.MeetingId,
-          TranscriptionConfiguration: transcriptionConfiguration
-        }).promise();
-        respond(response, 200, 'application/json', JSON.stringify({}));
-      } else if (request.method === 'POST' && requestUrl.pathname === '/stop_transcription') {
-        let client = getClientForMeeting(meetingTable[requestUrl.query.title]);
-
-        await client.stopMeetingTranscription({
-          MeetingId: meetingTable[requestUrl.query.title].Meeting.MeetingId
         }).promise();
         respond(response, 200, 'application/json', JSON.stringify({}));
       } else if (request.method === 'GET' && requestUrl.pathname === '/fetch_credentials') {
@@ -393,19 +234,6 @@ function serve(host = '127.0.0.1:5000') {
           sessionToken: AWS.config.credentials.sessionToken,
         };
         respond(response, 200, 'application/json', JSON.stringify(awsCredentials), true);
-      } else if (request.method === 'GET' && (requestUrl.pathname === '/audio_file' || requestUrl.pathname === '/stereo_audio_file')) {
-        let filePath = 'dist/speech.mp3';
-        if (requestUrl.pathname === '/stereo_audio_file') {
-          filePath = 'dist/speech_stereo.mp3';
-        }
-        fs.readFile(filePath, { encoding: 'base64' }, function (err, data) {
-          if (err) {
-            log(`Error reading audio file ${filePath}: ${err}`)
-            respond(response, 404, 'application/json', JSON.stringify({}));
-            return;
-          }
-          respond(response, 200, 'audio/mpeg', data);
-        });
       } else {
         respond(response, 404, 'text/html', '404 Not Found');
       }
@@ -432,4 +260,4 @@ function respond(response, statusCode, contentType, body, skipLogging = false) {
   }
 }
 
-module.exports = { serve };
+serve();

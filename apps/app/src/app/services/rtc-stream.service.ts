@@ -1,21 +1,7 @@
 import { Inject, Injectable } from '@angular/core';
 import { Conversation, Stream, StreamInfo, UserAgent } from '@apirtc/apirtc';
-import {
-  BehaviorSubject,
-  catchError,
-  delay,
-  filter,
-  from,
-  map,
-  Observable,
-  Subject,
-  switchMap,
-  take,
-  takeUntil,
-  tap
-} from 'rxjs';
-import { API_RTC_KEY, STREAM_PUBLISH_DELAY } from './tokens';
-import { AwsService } from './aws';
+import { BehaviorSubject, catchError, from, map, Observable, Subject, switchMap, tap } from 'rxjs';
+import { API_RTC_KEY, STREAM_PUBLISH_DELAY } from '../tokens';
 
 function subscribeToStreamListChange(conversation: Conversation) {
   conversation.on('streamListChanged', (streamInfo: StreamInfo) => {
@@ -36,7 +22,7 @@ function subscribeToStreamListChange(conversation: Conversation) {
 @Injectable({
   providedIn: 'root'
 })
-export class StreamService {
+export class RtcStreamService {
   userAgent: UserAgent;
   conversation: Conversation = null;
 
@@ -44,33 +30,30 @@ export class StreamService {
   onStreamAdded$: Subject<boolean> = new Subject<boolean>();
 
   localStream: Stream;
+  remoteStream: Stream;
 
-  participantsCount = 1;
+  participantCountChanged$ = new BehaviorSubject(1);
 
   constructor(
     @Inject(API_RTC_KEY) public webRtcKey: string,
-    @Inject(STREAM_PUBLISH_DELAY) public publishDelay: number,
-    private awsService: AwsService
+    @Inject(STREAM_PUBLISH_DELAY) public publishDelay: number
   ) {
     this.userAgent = new UserAgent({ uri: this.webRtcKey });
   }
 
-  getConversation(name: string) {
+  getConversation(name = 'test') {
     return from(this.userAgent.register())
       .pipe(
         map((session) => session.getConversation(name)),
         tap((conversation) => this.conversation = conversation),
         tap(subscribeToStreamListChange),
-        tap(() => {
-          console.log('con', this.conversation);
-        }),
         tap(conversation => conversation.on('streamAdded', this.onStreamAdded)),
         tap(conversation => conversation.on('streamRemoved', this.onStreamRemoved)),
         tap(conversation => conversation.on('contactJoined', (c) => {
-          this.participantsCount++;
+          this.participantCountChanged$.next(this.participantCountChanged$.value + 1);
         })),
         tap(conversation => conversation.on('contactLeft', (c) => {
-          this.participantsCount--;
+          this.participantCountChanged$.next(this.participantCountChanged$.value - 1);
         })),
         switchMap(() => this.conversation.join()),
         tap(() => this.conversationLoaded$.next(this.conversation)),
@@ -78,43 +61,46 @@ export class StreamService {
       );
   }
 
+  leaveConversation() {
+    return from(this.conversation.leave())
+      .pipe(
+        tap(() => this.conversation = null)
+      );
+  }
+
   onStreamAdded = (stream: Stream) => {
+    this.remoteStream = stream;
     stream.addInDiv('remote-container', 'remote-media-' + stream.streamId, {}, false);
     this.onStreamAdded$.next(true);
   };
 
   onStreamRemoved = (stream: Stream) => {
+    this.remoteStream = null;
     stream.removeFromDiv('remote-container', 'remote-media-' + stream.streamId);
     this.onStreamAdded$.next(false);
   };
 
-  createMediaStreamFromVideo(video: HTMLVideoElement): Observable<any> {
-    const mediaStream = (video as any).captureStream();
-    if (true) {
-      return from(this.awsService.shareVideoFile(mediaStream))
-        .pipe(
-        )
-    }
-
+  createMediaStreamFromVideo(mediaStream: MediaStream): Observable<any> {
+    console.log('streaming from RTC');
     return (from(this.userAgent.createStreamFromMediaStream(mediaStream))
       .pipe(
-        takeUntil(this.onStreamAdded$),
-        delay(this.publishDelay),
         switchMap((stream) => this.conversation.publish(stream)),
         tap((stream) => this.localStream = stream),
         catchError(err => {
           console.error('Create stream error', err);
-          return err
+          return err;
         })
       ) as Observable<Stream>);
   }
 
-  cancelStream() {
-    if (true) {
-      this.awsService.cancelStream();
-    } else {
-      this.conversation.unpublish(this.localStream);
-      this.localStream = null;
+  unsubscribeToStream() {
+    if (this.remoteStream) {
+      this.conversation.unsubscribeToStream('' + this.remoteStream.streamId);
     }
+  }
+
+  cancelStream() {
+    this.conversation.unpublish(this.localStream);
+    this.localStream = null;
   }
 }

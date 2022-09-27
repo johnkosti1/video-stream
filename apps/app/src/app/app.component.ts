@@ -1,9 +1,7 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
-import { BehaviorSubject, filter, finalize, Observable, switchMap, take, tap } from 'rxjs';
-import { StreamService } from './stream.service';
-import { Stream } from '@apirtc/apirtc';
-import { AwsService } from './aws';
+import { BehaviorSubject, finalize, tap } from 'rxjs';
 import { FormControl } from '@angular/forms';
+import { StreamService } from './services/stream.service';
 
 @Component({
   selector: 'video-share-root',
@@ -13,8 +11,7 @@ import { FormControl } from '@angular/forms';
 export class AppComponent {
   videoStreamStartLoading = false;
   conversationLoading = false;
-  iAmHost = false;
-  hasRemoteStream = false;
+  loggedIn = false;
 
   videoDataLoaded$ = new BehaviorSubject<boolean>(false);
 
@@ -22,61 +19,39 @@ export class AppComponent {
 
   selectedSample = new FormControl({ value: 'sample_2.webm', disabled: false });
 
-  constructor(public streamService: StreamService,
-    private awsService: AwsService) {
-  }
-
-  ngOnInit() {
-    this.awsService.remoteStreamAdded$
-      .pipe(
-        filter(() => !this.iAmHost),
-        tap((hasRemoteStream) => this.hasRemoteStream = hasRemoteStream)
-      )
-      .subscribe()
-
-    this.streamService.onStreamAdded$
-      .pipe(
-        tap((hasRemoteStream) => this.hasRemoteStream = hasRemoteStream)
-      )
-      .subscribe()
+  constructor(public streamService: StreamService) {
   }
 
   join() {
     this.conversationLoading = true;
-    this.awsService.authenticate((window as any).user || undefined);
-    this.streamService.getConversation('test')
+    this.streamService.authenticate()
       .pipe(
+        tap(() => this.loggedIn = true),
         finalize(() => this.conversationLoading = false)
       )
       .subscribe();
   }
 
-  ngAfterViewInit() {
+  leave() {
+    this.streamService.leave();
   }
 
-  onVideoLoadedData(e) {
+  onVideoLoadedData() {
     this.videoDataLoaded$.next(true);
   }
 
   startStreamVideo() {
     this.videoStreamStartLoading = true;
-    this.videoDataLoaded$
+    this.streamService.startStreamVideo(this.videoDataLoaded$, this.videoPlayer.nativeElement)
       .pipe(
-        filter(l => l),
-        take(1),
-        // tap(() => this.awsService.shareVideoFile()),
-        switchMap(() => this.streamService.createMediaStreamFromVideo(this.videoPlayer.nativeElement)),
-        tap(() => this.iAmHost = true),
-        finalize(() => this.videoStreamStartLoading = false),
-        finalize(() => this.selectedSample.disable()),
+        tap(() => this.selectedSample.disable()),
+        finalize(() => this.videoStreamStartLoading = false)
       )
       .subscribe();
   }
 
   cancelStream() {
-    this.streamService.cancelStream();
+    this.streamService.stopSteaming();
     this.selectedSample.enable();
-    this.iAmHost = false;
-    this.hasRemoteStream = false;
   }
 }
