@@ -13,7 +13,7 @@ export class StreamService {
   participantsSubscription: Subscription;
 
   get iAmHost() {
-    return this.rtcStreamService.localStream || this.awsService.iAmHost;
+    return !!this.rtcStreamService.localStream || this.awsService.iAmHost;
   }
 
   hasRemoteStream = false;
@@ -29,7 +29,7 @@ export class StreamService {
   subscribeToParticipantsChangeForHost() {
     this.rtcStreamService.participantCountChanged$
       .pipe(
-        filter(() => !!this.rtcStreamService.localStream || this.awsService.iAmHost),
+        filter(() => this.iAmHost),
         switchMap((count) => {
           if (this.streamSwitchThreshold && count > this.streamSwitchThreshold && !this.awsService.iAmHost) {
             console.log('should switch to amazon', count);
