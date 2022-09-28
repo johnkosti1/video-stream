@@ -10,7 +10,7 @@ This project was generated using [Nx](https://nx.dev).
 
 Run `yarn aws:serve` to run Amazon chime server. You need to provide keys for it.
 
-Run `yarn serve` to run Front-End application. It will run the application on http://localhost:3000
+Run `yarn serve` to run Front-End application. It will run the application on http://localhost:4200
 
 Application has join button, which starts both, `ApiRtc` and `Chime` sessions.
 
