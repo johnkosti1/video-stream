@@ -16,15 +16,20 @@ export class AppComponent {
   videoDataLoaded$ = new BehaviorSubject<boolean>(false);
 
   @ViewChild('player') videoPlayer: ElementRef<HTMLVideoElement>;
-
-  selectedSample = new FormControl({ value: 'sample_2.webm', disabled: false });
+  @ViewChild('localVideo', { static: true }) localVideo: ElementRef<HTMLVideoElement>;
+  @ViewChild('remoteStreams', { static: true }) remoteStreams: ElementRef<HTMLDivElement>;
+  @ViewChild('remoteStreamsAmazon', { static: true }) remoteStreamsAmazon: ElementRef<HTMLDivElement>;
 
   constructor(public streamService: StreamService) {
   }
 
-  join() {
+  ngOnInit() {
+    this.streamService.init(this.localVideo.nativeElement, this.remoteStreams.nativeElement, this.remoteStreamsAmazon.nativeElement);
+  }
+
+  join(name: string) {
     this.conversationLoading = true;
-    this.streamService.authenticate()
+    this.streamService.authenticate(name)
       .pipe(
         tap(() => this.loggedIn = true),
         finalize(() => this.conversationLoading = false)
@@ -32,26 +37,15 @@ export class AppComponent {
       .subscribe();
   }
 
-  leave() {
-    this.streamService.leave();
-  }
-
   onVideoLoadedData() {
     this.videoDataLoaded$.next(true);
   }
 
-  startStreamVideo() {
-    this.videoStreamStartLoading = true;
-    this.streamService.startStreamVideo(this.videoDataLoaded$, this.videoPlayer.nativeElement)
+  leaveConversation() {
+    this.streamService.leave()
       .pipe(
-        tap(() => this.selectedSample.disable()),
-        finalize(() => this.videoStreamStartLoading = false)
+        tap(() => this.loggedIn = false)
       )
-      .subscribe();
-  }
-
-  cancelStream() {
-    this.streamService.stopSteaming();
-    this.selectedSample.enable();
+      .subscribe()
   }
 }

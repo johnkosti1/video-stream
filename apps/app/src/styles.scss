@@ -4,3 +4,22 @@
 
 html, body { height: 100%; width: 100%; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+.stream-video {
+  position: relative;
+
+  .name {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    color: white;
+    font-weight: bold;
+    font-size: 25px;
+    padding: 10px 20px;
+    background-color: rgba(243, 157, 174, 0.62);
+    border-top-right-radius: 8px;
+
+    &.local {
+    }
+  }
+}
