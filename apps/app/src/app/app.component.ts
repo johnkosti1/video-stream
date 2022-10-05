@@ -11,6 +11,7 @@ import { StreamService } from './services/stream.service';
 export class AppComponent {
   videoStreamStartLoading = false;
   conversationLoading = false;
+  leaveLoading = false;
   loggedIn = false;
 
   videoDataLoaded$ = new BehaviorSubject<boolean>(false);
@@ -18,13 +19,12 @@ export class AppComponent {
   @ViewChild('player') videoPlayer: ElementRef<HTMLVideoElement>;
   @ViewChild('localVideo', { static: true }) localVideo: ElementRef<HTMLVideoElement>;
   @ViewChild('remoteStreams', { static: true }) remoteStreams: ElementRef<HTMLDivElement>;
-  @ViewChild('remoteStreamsAmazon', { static: true }) remoteStreamsAmazon: ElementRef<HTMLDivElement>;
 
   constructor(public streamService: StreamService) {
   }
 
   ngOnInit() {
-    this.streamService.init(this.localVideo.nativeElement, this.remoteStreams.nativeElement, this.remoteStreamsAmazon.nativeElement);
+    this.streamService.init(this.localVideo.nativeElement, this.remoteStreams.nativeElement);
   }
 
   join(name: string) {
@@ -42,9 +42,11 @@ export class AppComponent {
   }
 
   leaveConversation() {
+    this.leaveLoading = true;
     this.streamService.leave()
       .pipe(
-        tap(() => this.loggedIn = false)
+        tap(() => this.loggedIn = false),
+        tap(() => this.leaveLoading = false)
       )
       .subscribe()
   }

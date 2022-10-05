@@ -1,4 +1,5 @@
 import {
+  AudioProfile,
   AudioVideoFacade,
   ConsoleLogger,
   DefaultBrowserBehavior,
@@ -7,13 +8,14 @@ import {
   Logger,
   LogLevel,
   MeetingSession,
-  MeetingSessionConfiguration,
+  MeetingSessionConfiguration, VideoCodecCapability,
   VideoTileState
 } from 'amazon-chime-sdk-js';
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, catchError, from, map, Observable, of, Subject, switchMap, tap } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Stream } from '@apirtc/apirtc';
+import { cleanOtherContacts } from '../helpers/heplers';
 
 export let fatal: (e: Error) => void;
 
@@ -43,7 +45,7 @@ export class AwsService {
   constructor(private httpClient: HttpClient) {
   }
 
-  shareVideoFile() {
+  startStreaming() {
     // this.audioVideo.realtimeSendDataMessage('yyyyy', 'asasss')
     return from(this.audioVideo.startContentShare(this.localStream))
   }
@@ -61,17 +63,22 @@ export class AwsService {
         map((joinInfo) => new MeetingSessionConfiguration(joinInfo.Meeting, joinInfo.Attendee)),
         tap((configuration) => this.initializeMeetingSession(configuration)),
         switchMap(() => this.audioVideo.listVideoInputDevices()),
-        switchMap((devices) => this.audioVideo.startVideoInput(devices[0])),
+        switchMap((devices) => {
+          console.log('devvv', devices);
+          return this.audioVideo.startVideoInput(devices[0])
+        }),
         tap((stream) => this.localStream = stream),
-        switchMap(() => this.shareVideoFile()),
+        // switchMap(() => this.startStreaming())
       );
   }
 
 
   initializeMeetingSession(configuration: MeetingSessionConfiguration) {
+    configuration.enableSimulcastForUnifiedPlanChromiumBasedBrowsers = true;
     this.meetingLogger = new ConsoleLogger('SDK', this.logLevel);
+
     this.deviceController = new DefaultDeviceController(this.meetingLogger, {
-      enableWebAudio: this.enableWebAudio,
+      enableWebAudio: false,
     });
 
     this.meetingSession = new DefaultMeetingSession(
@@ -80,7 +87,16 @@ export class AwsService {
       this.deviceController
     );
 
+    this.meetingSession.audioVideo.setAudioProfile(AudioProfile.fullbandSpeechMono());
+    this.meetingSession.audioVideo.setContentAudioProfile(AudioProfile.fullbandSpeechMono());
+
+
     this.audioVideo = this.meetingSession.audioVideo;
+
+    this.audioVideo.setVideoCodecSendPreferences([VideoCodecCapability.vp8()]);
+    this.audioVideo.setContentShareVideoCodecPreferences([VideoCodecCapability.vp8()]);
+
+    this.meetingSession.contentShare.enableSimulcastForContentShare(true);
     this.audioVideo.start();
 
     this.audioVideo.realtimeSubscribeToReceiveDataMessage('test', (a) => {
@@ -96,13 +112,12 @@ export class AwsService {
       const contactName = externalUserId.split('#')[1];
       const contacts = this.contactsChanged$.value;
       // const shouldUpdateContacts = contacts[contactName]?.joined !== present
-      if (contactName !== this.username && !present) {
-        console.log('new contact iddd', id, present, externalUserId)
+      if (contactName !== this.username) {
         this.contactsChanged$.next({
           ...contacts,
           [contactName]: {
-            joined: false,
-            stream: null
+            ...contacts[contactName],
+            joined: present
           }
         })
       }
@@ -131,11 +146,16 @@ export class AwsService {
       },
       videoTileDidUpdate: (tileState: VideoTileState) => {
         // console.log('AWS video tile', tileState)
+
+        console.log('AWS tile updated', tileState)
+
         if (!tileState.boundExternalUserId) {
           return;
         }
 
         const contactName = tileState.boundExternalUserId.split('#')[1];
+
+        // console.log('AWS tileee', contactName);
 
         if (
           this.username === contactName
@@ -167,13 +187,10 @@ export class AwsService {
         //   this.audioVideo.removeVideoTile(tileState.tileId)
         // }, 5000)
 
-        console.log('AWS tile did update', tileState)
-        return;
-
-        setTimeout(() => {
-          const videoFile = document.getElementById('video-aws') as HTMLVideoElement;
-          this.audioVideo.bindVideoElement(tileState.tileId, videoFile);
-        }, 300);
+        // setTimeout(() => {
+        //   const videoFile = document.getElementById('video-aws') as HTMLVideoElement;
+        //   this.audioVideo.bindVideoElement(tileState.tileId, videoFile);
+        // }, 300);
       }
     });
   }
@@ -188,10 +205,12 @@ export class AwsService {
     });
   }
 
-  leaveMeeting(): Observable<any> {
-    return this.httpClient.post('http://localhost:5000/end',
-      {},
-      { params: { title: this.meetingTitle } }
-    );
+  leaveMeeting() {
+    this.audioVideo.stopContentShare()
+    this.contactsChanged$.next(cleanOtherContacts(this.contactsChanged$.value))
+    // return this.httpClient.post('http://localhost:5000/end',
+    //   {},
+    //   { params: { title: this.meetingTitle } }
+    // );
   }
 }

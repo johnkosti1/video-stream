@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@angular/core';
 import { Conversation, Stream, StreamInfo, UserAgent } from '@apirtc/apirtc';
 import { BehaviorSubject, from, map, switchMap, tap } from 'rxjs';
 import { API_RTC_KEY, STREAM_PUBLISH_DELAY } from '../tokens';
+import { cleanOtherContacts } from '../helpers/heplers';
 
 function subscribeToStreamListChange(conversation: Conversation) {
   conversation.on('streamListChanged', (streamInfo: StreamInfo) => {
@@ -74,6 +75,8 @@ export class RtcStreamService {
 
   contactEvent = (joined: boolean) => (c) => {
     // console.log('RTC Contact joined', joined);
+    console.log('contact event RTC', joined)
+    this.participantsCount = this.participantsCount + (joined ? 1 : -1);
     const contacts = this.contactsChanged$.value;
     if (!joined && contacts[c.userData.id]?.joined) {
       this.contactsChanged$.next({
@@ -84,8 +87,6 @@ export class RtcStreamService {
         }
       });
     }
-
-    this.participantsCount = this.participantsCount + (joined ? 1 : -1);
   };
 
   onStreamAdded = (stream: Stream) => {
@@ -129,13 +130,7 @@ export class RtcStreamService {
       .pipe(
         tap(() => this.userAgent.unregister()),
         tap(() => this.conversation = null),
-        tap(this.cleanOtherContacts),
+        tap(() => this.contactsChanged$.next(cleanOtherContacts(this.contactsChanged$.value))),
       );
   }
-
-  cleanOtherContacts = () => {
-    const contacts = this.contactsChanged$.value;
-    const names = Object.keys(contacts);
-    this.contactsChanged$.next(names.reduce((acc, curr) => ({ ...acc, [curr]: { joined: false, stream: null } }), {}));
-  };
 }
